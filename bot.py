@@ -60,15 +60,9 @@ class MalkkoBot(commands.Bot):
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user.id)
 
-    async def close(self):
-        db = getattr(self, "db", None)
-        if db is not None:
-            await db.close()
-        await super().close()
-
-    # async def close(self) -> None:
-    #     await super().close()  # cog(스케줄러) 먼저 정리
-    #     await self.db.close()
+    async def close(self) -> None:
+        await super().close()  # cog(스케줄러) 먼저 정리
+        await self.db.close()
 
 
 bot = MalkkoBot()
