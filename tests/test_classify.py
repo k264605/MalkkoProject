@@ -5,6 +5,7 @@ import pytest
 from core.classify import classify
 from core.policy import BotAction, decide
 from core.state import Stage
+from core.policy import NAG_STREAK, STREAK_WINDOW, Streak, update_streak
 
 NOW = datetime(2026, 11, 10, 12, tzinfo=timezone.utc)
 
@@ -52,3 +53,25 @@ def test_nag_cooldown_one_hour():
 
 def test_non_chitchat_never_nags():
     assert decide(WORK, Stage.ACCEPTANCE, None, NOW) is BotAction.NONE
+
+def test_streak_counts_consecutive_chitchat():
+    s = Streak()
+    for i in range(3):
+        s = update_streak(s, True, NOW + timedelta(minutes=i))
+    assert s.count == 3
+
+
+def test_streak_resets_on_real_message():
+    s = update_streak(update_streak(Streak(), True, NOW), True, NOW)
+    assert update_streak(s, False, NOW) == Streak()
+
+
+def test_streak_restarts_after_window():
+    s = update_streak(Streak(), True, NOW)
+    s = update_streak(s, True, NOW + STREAK_WINDOW + timedelta(seconds=1))
+    assert s.count == 1
+
+
+def test_no_nag_until_streak_reached():
+    assert decide(CHAT, Stage.ANGER, None, NOW, chitchat_streak=NAG_STREAK - 1) is BotAction.NONE
+    assert decide(CHAT, Stage.ANGER, None, NOW, chitchat_streak=NAG_STREAK) is BotAction.NAG
