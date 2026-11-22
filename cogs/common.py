@@ -13,7 +13,7 @@ from core.messages import acceleration_line, enter_line
 from core.state import Change, Mascot, Stage, decay
 from db import repo
 from db.repo import TeamRow
-from ui.embeds import build_status_card
+from ui.embeds import card_kwargs
 from ui.translator import STAGE_KO
 
 import contextlib
@@ -78,8 +78,8 @@ async def announce(bot: commands.Bot, team: TeamRow, change: Change, now: dateti
 
     revive = await revive_info(bot.db, team, a)
     headline = enter_line(a.stage) if change.stage_changed else None
-    embed = build_status_card(team, a, now, revive, headline=headline)
+    kw = card_kwargs(team, a, now, revive, headline=headline)
     try:
-        await channel.send(content="\n".join(lines), embed=embed)
+        await channel.send(content="\n".join(lines), **kw)
     except discord.HTTPException:
         log.exception("알림 전송 실패: team=%s", team.id)

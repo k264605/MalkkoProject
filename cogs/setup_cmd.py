@@ -12,7 +12,7 @@ from discord.ext import commands
 from cogs.common import revive_info, settle
 from config import KST, kst_end_of_day, kst_start_of_day, utcnow
 from db import repo
-from ui.embeds import build_status_card
+from ui.embeds import card_kwargs
 
 
 def parse_date(text: str) -> date:
@@ -73,10 +73,10 @@ class SetupCog(commands.Cog):
         await repo.ensure_member(
             db, team.id, interaction.user.id, interaction.user.display_name, now)
         m = await repo.get_mascot(db, team.id)
-        embed = build_status_card(
+        kw = card_kwargs(
             team, m, now, headline=f"안녕! 나는 {team.name}이야. 우리 팀 잘 부탁해!")
         await interaction.response.send_message(
-            content="🎉 이 채널의 말꼬가 태어났어요!", embed=embed)
+            content="🎉 이 채널의 말꼬가 태어났어요!", **kw)
 
     @app_commands.command(name="status", description="말꼬의 현재 상태를 보여줘요")
     @app_commands.guild_only()
@@ -90,7 +90,7 @@ class SetupCog(commands.Cog):
         now = team.now()
         m, _ = await settle(db, team, now, save=False)
         revive = await revive_info(db, team, m)
-        await interaction.response.send_message(embed=build_status_card(team, m, now, revive))
+        await interaction.response.send_message(**card_kwargs(team, m, now, revive))
 
 
 async def setup(bot: commands.Bot) -> None:

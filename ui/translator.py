@@ -29,7 +29,16 @@ KO_NAMES: dict[str, str] = {
     "reset": "초기화",
     "hours": "시간",
     "days": "남은일수",
-    "content": "내용"
+    "content": "내용",
+    "meeting-vote": "회의-투표",
+    "title": "제목",
+    "option1": "후보1",
+    "option2": "후보2",
+    "option3": "후보3",
+    "option4": "후보4",
+    "option5": "후보5",
+    "multiple": "중복선택",
+
 }
 
 

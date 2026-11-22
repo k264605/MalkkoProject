@@ -28,6 +28,8 @@ HEAL: dict[ActionKind, int] = {
 # 1인당 쿨다운. 없는 종류는 제한 없음.
 COOLDOWNS: dict[ActionKind, timedelta] = {
     ActionKind.PROGRESS: timedelta(hours=6),
+    ActionKind.STUCK_REQUEST: timedelta(hours=1),
+    ActionKind.VOTE: timedelta(hours=1),            # ← 추가: 투표를 계속 만들어 보상 받는 것 방지
 }
 
 

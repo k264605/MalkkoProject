@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -165,6 +166,8 @@ async def reset_demo(db: aiosqlite.Connection, team_id: int) -> TeamRow:
             "speed_tier=1.0, last_action_at=NULL, last_nag_at=NULL, last_decay_at=? "
             "WHERE team_id=?", (float(RULES.hp_max), to_db(now), team_id))
         await db.execute("DELETE FROM actions WHERE team_id=?", (team_id,))
+        await db.execute("DELETE FROM stuck_requests WHERE team_id=?", (team_id,))
+        await db.execute("DELETE FROM votes WHERE team_id=?", (team_id,))
         await db.commit()
     except Exception:
         await db.rollback()
@@ -279,3 +282,180 @@ async def add_classification(
          int(offered), to_db(created_at)),
     )
     await db.commit()
+
+# ── 막힘 요청 ───────────────────────────────────────
+@dataclass(frozen=True)
+class StuckRow:
+    id: int
+    team_id: int
+    requester_id: int
+    content: str
+    helper_id: int | None
+    status: str                 # 'open' | 'helped'
+    message_id: int | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+async def create_stuck_request(
+    db: aiosqlite.Connection, team_id: int, requester_id: int, content: str, created_at: datetime,
+) -> int:
+    cur = await db.execute(
+        "INSERT INTO stuck_requests (team_id, requester_id, content, created_at) VALUES (?,?,?,?)",
+        (team_id, requester_id, content, to_db(created_at)),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def set_stuck_message(db: aiosqlite.Connection, request_id: int, message_id: int) -> None:
+    await db.execute("UPDATE stuck_requests SET message_id=? WHERE id=?", (message_id, request_id))
+    await db.commit()
+
+
+async def get_stuck_request(db: aiosqlite.Connection, request_id: int) -> StuckRow | None:
+    r = await _one(db, "SELECT * FROM stuck_requests WHERE id=?", (request_id,))
+    if r is None:
+        return None
+    return StuckRow(
+        id=r["id"], team_id=r["team_id"], requester_id=r["requester_id"], content=r["content"],
+        helper_id=r["helper_id"], status=r["status"], message_id=r["message_id"],
+        created_at=datetime.fromisoformat(r["created_at"]), resolved_at=from_db(r["resolved_at"]),
+    )
+
+
+async def claim_stuck_request(
+    db: aiosqlite.Connection, request_id: int, helper_id: int, now: datetime,
+) -> bool:
+    """열려 있는 요청을 이 사람이 맡는다. 이미 누가 맡았다면 False (한 요청에 한 명)."""
+    cur = await db.execute(
+        "UPDATE stuck_requests SET helper_id=?, status='helped', resolved_at=? "
+        "WHERE id=? AND status='open'",
+        (helper_id, to_db(now), request_id),
+    )
+    await db.commit()
+    return cur.rowcount == 1
+
+async def update_team_period(
+    db: aiosqlite.Connection, team_id: int, start: datetime, end: datetime,
+) -> None:
+    """/설정: 기간 변경. 원래 마감일(orig_end_date)도 새 마감일로 맞춰서,
+    /데모 초기화가 새 기간으로 돌아가게 한다."""
+    await db.execute(
+        "UPDATE teams SET start_date=?, end_date=?, orig_end_date=? WHERE id=?",
+        (to_db(start), to_db(end), to_db(end), team_id),
+    )
+    await db.commit()
+
+# ── 투표 ────────────────────────────────────────────
+@dataclass(frozen=True)
+class VoteRow:
+    id: int
+    team_id: int
+    creator_id: int
+    title: str
+    options: tuple[str, ...]
+    allow_multiple: bool
+    message_id: int | None
+    deadline: datetime
+    closed: bool
+    all_awarded: bool
+    created_at: datetime
+
+
+def _vote(r: aiosqlite.Row) -> VoteRow:
+    return VoteRow(
+        id=r["id"], team_id=r["team_id"], creator_id=r["creator_id"], title=r["title"],
+        options=tuple(json.loads(r["options"])), allow_multiple=bool(r["allow_multiple"]),
+        message_id=r["message_id"], deadline=datetime.fromisoformat(r["deadline"]),
+        closed=bool(r["closed"]), all_awarded=bool(r["all_awarded"]),
+        created_at=datetime.fromisoformat(r["created_at"]),
+    )
+
+
+async def create_vote(
+    db: aiosqlite.Connection, *, team_id: int, creator_id: int, title: str, options,
+    allow_multiple: bool, deadline: datetime, created_at: datetime,
+) -> int:
+    cur = await db.execute(
+        "INSERT INTO votes (team_id, creator_id, title, options, allow_multiple, deadline, "
+        "created_at) VALUES (?,?,?,?,?,?,?)",
+        (team_id, creator_id, title, json.dumps(list(options), ensure_ascii=False),
+         int(allow_multiple), to_db(deadline), to_db(created_at)),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def set_vote_message(db: aiosqlite.Connection, vote_id: int, message_id: int) -> None:
+    await db.execute("UPDATE votes SET message_id=? WHERE id=?", (message_id, vote_id))
+    await db.commit()
+
+
+async def get_vote(db: aiosqlite.Connection, vote_id: int) -> VoteRow | None:
+    r = await _one(db, "SELECT * FROM votes WHERE id=?", (vote_id,))
+    return _vote(r) if r else None
+
+
+async def get_user_choices(db: aiosqlite.Connection, vote_id: int, user_id: int) -> set[int]:
+    async with db.execute(
+        "SELECT option_index FROM vote_responses WHERE vote_id=? AND user_id=?",
+        (vote_id, user_id),
+    ) as cur:
+        return {r["option_index"] for r in await cur.fetchall()}
+
+
+async def set_user_choices(
+    db: aiosqlite.Connection, vote_id: int, user_id: int, choices: set[int],
+) -> None:
+    """이 사람의 선택을 통째로 교체한다 (빈 집합이면 투표 취소)."""
+    try:
+        await db.execute(
+            "DELETE FROM vote_responses WHERE vote_id=? AND user_id=?", (vote_id, user_id))
+        for idx in sorted(choices):
+            await db.execute(
+                "INSERT INTO vote_responses (vote_id, user_id, option_index) VALUES (?,?,?)",
+                (vote_id, user_id, idx))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def get_vote_responses(db: aiosqlite.Connection, vote_id: int) -> list[tuple[int, int]]:
+    """[(user_id, option_index), ...]"""
+    async with db.execute(
+        "SELECT user_id, option_index FROM vote_responses WHERE vote_id=? "
+        "ORDER BY option_index, user_id", (vote_id,),
+    ) as cur:
+        return [(r["user_id"], r["option_index"]) for r in await cur.fetchall()]
+
+
+async def mark_all_awarded(db: aiosqlite.Connection, vote_id: int) -> None:
+    await db.execute("UPDATE votes SET all_awarded=1 WHERE id=?", (vote_id,))
+    await db.commit()
+
+
+async def list_due_votes(db: aiosqlite.Connection, now: datetime) -> list[VoteRow]:
+    async with db.execute(
+        "SELECT * FROM votes WHERE closed=0 AND deadline<=?", (to_db(now),)
+    ) as cur:
+        return [_vote(r) for r in await cur.fetchall()]
+
+
+async def close_vote(db: aiosqlite.Connection, vote_id: int, now: datetime) -> bool:
+    """열려 있는 투표를 닫는다. 이미 닫혔다면 False (한 번만 마감 처리하려고)."""
+    cur = await db.execute(
+        "UPDATE votes SET closed=1, closed_at=? WHERE id=? AND closed=0", (to_db(now), vote_id))
+    await db.commit()
+    return cur.rowcount == 1
+
+
+async def has_action(
+    db: aiosqlite.Connection, team_id: int, user_id: int, kind, content: str,
+) -> bool:
+    kind_value = kind.value if isinstance(kind, Enum) else str(kind)
+    r = await _one(
+        db, "SELECT 1 AS x FROM actions WHERE team_id=? AND user_id=? AND kind=? AND content=? "
+            "LIMIT 1", (team_id, user_id, kind_value, content))
+    return r is not None

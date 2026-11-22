@@ -12,7 +12,7 @@ from core.actions import ActionKind, apply_action, cooldown_remaining, motion_fo
 from core.messages import REVIVE_LINE, thanks_line
 from core.state import Stage
 from db import repo
-from ui.embeds import MOTION_EMOJI, build_status_card
+from ui.embeds import MOTION_EMOJI, card_kwargs
 from ui.translator import STAGE_KO
 
 
@@ -103,11 +103,11 @@ class ActionsCog(commands.Cog):
                 text += f"\n📈 {STAGE_KO[m.stage]} → {STAGE_KO[new_m.stage]}"
             headline = thanks_line()
 
-        embed = build_status_card(team, new_m, now, revive, headline=headline)
+        kw = card_kwargs(team, new_m, now, revive, headline=headline)
         await interaction.response.send_message(
             content=f"{text}\n> {content}",
-            embed=embed,
             allowed_mentions=discord.AllowedMentions.none(),
+            **kw,
         )
 
 

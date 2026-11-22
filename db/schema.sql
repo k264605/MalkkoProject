@@ -59,3 +59,39 @@ CREATE TABLE IF NOT EXISTS classifications (
     created_at  TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_class_team_time ON classifications (team_id, created_at);
+
+CREATE TABLE IF NOT EXISTS stuck_requests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id      INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    requester_id INTEGER NOT NULL,
+    content      TEXT    NOT NULL,
+    helper_id    INTEGER,
+    status       TEXT    NOT NULL DEFAULT 'open',      -- 'open' | 'helped'
+    message_id   INTEGER,
+    created_at   TEXT    NOT NULL,
+    resolved_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_stuck_team ON stuck_requests (team_id, status);
+
+CREATE TABLE IF NOT EXISTS votes (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id        INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    creator_id     INTEGER NOT NULL,
+    title          TEXT    NOT NULL,
+    options        TEXT    NOT NULL,                 -- JSON 배열
+    allow_multiple INTEGER NOT NULL DEFAULT 0,
+    message_id     INTEGER,
+    deadline       TEXT    NOT NULL,                 -- UTC ISO (실제 시각)
+    closed         INTEGER NOT NULL DEFAULT 0,
+    all_awarded    INTEGER NOT NULL DEFAULT 0,       -- 전원 투표 보너스를 이미 줬는지
+    created_at     TEXT    NOT NULL,
+    closed_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_votes_open ON votes (closed, deadline);
+
+CREATE TABLE IF NOT EXISTS vote_responses (
+    vote_id      INTEGER NOT NULL REFERENCES votes(id) ON DELETE CASCADE,
+    user_id      INTEGER NOT NULL,
+    option_index INTEGER NOT NULL,
+    PRIMARY KEY (vote_id, user_id, option_index)
+);

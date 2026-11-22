@@ -10,7 +10,7 @@ from discord.ext import commands
 from cogs.common import announce, needs_announce, revive_info, settle
 from db import repo
 from db.repo import TeamRow
-from ui.embeds import build_status_card, describe_change
+from ui.embeds import card_kwargs, describe_change
 
 
 class DemoCog(commands.Cog):
@@ -56,7 +56,7 @@ class DemoCog(commands.Cog):
             await announce(self.bot, team, change, now)
         else:
             revive = await revive_info(db, team, m)
-            await interaction.followup.send(embed=build_status_card(team, m, now, revive))
+            await interaction.followup.send(**card_kwargs(team, m, now, revive))
 
     @demo.command(name="deadline", description="마감을 앞당겨서 가속 구간을 바로 보여줘요")
     @app_commands.describe(days="마감까지 남길 일수 (예: 2)")
@@ -113,7 +113,7 @@ class DemoCog(commands.Cog):
         m = await repo.get_mascot(db, team.id)
         await interaction.followup.send(
             content="🔄 데모를 초기화했어요.",
-            embed=build_status_card(team, m, now, headline="처음부터 다시 시작해볼까?"))
+            **card_kwargs(team, m, now, headline="처음부터 다시 시작해볼까?"))
 
 
 async def setup(bot: commands.Bot) -> None:

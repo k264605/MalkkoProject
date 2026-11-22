@@ -14,9 +14,9 @@ from ui.translator import KoTranslator
 
 log = logging.getLogger("malkko")
 
-# 만드는 대로 여기에 추가한다. (예: "cogs.setup_cmd")
 COGS: list[str] = [
-    "cogs.setup_cmd", "cogs.demo", "cogs.scheduler", "cogs.actions_cmd", "cogs.listener",
+    "cogs.setup_cmd", "cogs.demo", "cogs.scheduler", "cogs.actions_cmd",
+    "cogs.listener", "cogs.stuck_cmd", "cogs.settings_cmd", "cogs.meeting_cmd",
 ]
 
 
@@ -48,17 +48,35 @@ class MalkkoBot(commands.Bot):
 
         await self.tree.set_translator(KoTranslator())  # ← 추가 (sync보다 먼저)
 
-        # 3) 슬래시 명령 동기화 (개발 서버에는 즉시 반영)
-        if settings.dev_guild_id:
-            guild = discord.Object(id=settings.dev_guild_id)
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-        else:
-            synced = await self.tree.sync()
-        log.info("synced %d commands", len(synced))
+        # 3) 슬래시 명령 동기화 (실패해도 봇은 계속 실행)
+        try:
+            if settings.sync_scope == "guild":
+                # 개발용: 한 서버에만 즉시 반영
+                guild = discord.Object(id=settings.dev_guild_id)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                self.tree.clear_commands(guild=None)  # 전역에 남은 같은 명령 정리 (두 번 뜨는 것 방지)
+                await self.tree.sync()
+                log.info("synced %d guild commands (dev), cleared global commands", len(synced))
+            else:
+                # 배포용: 봇이 들어간 모든 서버에서 사용
+                synced = await self.tree.sync()
+                log.info("synced %d global commands", len(synced))
+                if settings.dev_guild_id:
+                    # 예전에 개발 서버 전용으로 등록해 둔 같은 명령을 정리 (두 번 뜨는 것 방지)
+                    guild = discord.Object(id=settings.dev_guild_id)
+                    self.tree.clear_commands(guild=guild)
+                    await self.tree.sync(guild=guild)
+                    log.info("cleared old guild commands in %s", settings.dev_guild_id)
+        except discord.HTTPException as e:
+            log.error("명령 동기화 실패: %s (봇이 서버에 있는지, applications.commands scope로 초대했는지 확인)", e)
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user.id)
+        if not settings.dev_guild_id:
+            for g in self.guilds:
+                self.tree.clear_commands(guild=g)
+                await self.tree.sync(guild=g)
 
     async def close(self) -> None:
         await super().close()  # cog(스케줄러) 먼저 정리
