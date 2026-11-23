@@ -58,6 +58,9 @@ class SetupCog(commands.Cog):
                 "이 채널에는 이미 말꼬가 있어요. `/상태`로 확인해 보세요.", ephemeral=True)
             return
 
+        # 결과 카드에 이미지가 붙어서 업로드가 길어질 수 있다. 3초 제한에 걸리지 않게 먼저 응답해 둔다
+        await interaction.response.defer()
+
         try:
             team = await repo.create_team(
                 db, guild_id=interaction.guild_id, channel_id=interaction.channel_id,
@@ -65,8 +68,8 @@ class SetupCog(commands.Cog):
                 start=kst_start_of_day(start), end=kst_end_of_day(end), created_at=utcnow(),
             )
         except sqlite3.IntegrityError:
-            await interaction.response.send_message(
-                "이 채널에는 이미 말꼬가 있어요.", ephemeral=True)
+            # 위에서 확인한 뒤 같은 채널에 동시에 만들어진 드문 경우
+            await interaction.followup.send("이 채널에는 이미 말꼬가 있어요.")
             return
 
         now = team.now()
@@ -75,7 +78,7 @@ class SetupCog(commands.Cog):
         m = await repo.get_mascot(db, team.id)
         kw = card_kwargs(
             team, m, now, headline=f"안녕! 나는 {team.name}이야. 우리 팀 잘 부탁해!")
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content="🎉 이 채널의 말꼬가 태어났어요!", **kw)
 
     @app_commands.command(name="status", description="말꼬의 현재 상태를 보여줘요")
@@ -87,10 +90,11 @@ class SetupCog(commands.Cog):
             await interaction.response.send_message(
                 "이 채널에는 아직 말꼬가 없어요. `/말꼬-시작`으로 만들어 주세요.", ephemeral=True)
             return
+        await interaction.response.defer()      # 이미지 업로드가 길어져도 3초 제한에 걸리지 않게
         now = team.now()
         m, _ = await settle(db, team, now, save=False)
         revive = await revive_info(db, team, m)
-        await interaction.response.send_message(**card_kwargs(team, m, now, revive))
+        await interaction.followup.send(**card_kwargs(team, m, now, revive))
 
 
 async def setup(bot: commands.Bot) -> None:
