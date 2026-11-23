@@ -83,6 +83,7 @@ def apply_action(
             m,
             hp=float(RULES.hp_max),
             last_action_at=now,
+            last_decay_at=now,
             acceptance_since=None,
             revive_count=m.revive_count + 1,
             skin_level=max(m.skin_level, 2),
