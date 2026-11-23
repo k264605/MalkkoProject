@@ -5,7 +5,7 @@ import pytest
 from core.actions import (
     ActionKind, apply_action, cooldown_remaining, is_allowed, motion_for, revive_required,
 )
-from core.state import Mascot, Stage
+from core.state import Mascot, Stage, Team, decay
 
 UTC = timezone.utc
 NOW = datetime(2026, 11, 10, 12, tzinfo=UTC)
@@ -87,6 +87,19 @@ def test_revive_at_majority():
     assert c.after.revive_count == 1 and c.after.skin_level == 2
     assert c.after.acceptance_since is None
     assert motion_for(c) == "shine"
+
+
+def test_revive_resets_last_decay_at():
+    # 체력 0이 된 뒤로는 decay()가 None이라 last_decay_at이 5시간 전에 멈춰 있다
+    m = Mascot(hp=0, last_decay_at=NOW - timedelta(hours=5),
+               acceptance_since=NOW - timedelta(hours=19))
+    c = apply_action(m, K.PROGRESS, NOW, actor_id=2,
+                     sharers=frozenset({1}), member_count=3)
+    assert c.revived and c.after.last_decay_at == NOW
+
+    team = Team(NOW - timedelta(days=14), NOW + timedelta(days=14))   # 4주 -> 시간당 1.25, 1배속
+    d = decay(c.after, team, NOW + timedelta(minutes=1))
+    assert d.after.hp == pytest.approx(100 - 1.25 / 60)               # 1분치만 감소 (5시간치 아님)
 
 
 def test_acceptance_requires_actor_id():
