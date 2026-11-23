@@ -27,9 +27,9 @@ class Settings:
 
 
 def _load_settings() -> Settings:
-    token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        raise RuntimeError(".env에 DISCORD_TOKEN이 없습니다.")
+    # 토큰이 없어도 여기서는 멈추지 않는다 (core 테스트가 .env 없이 돌 수 있게).
+    # 봇을 실제로 실행할 때 bot.py에서 확인한다.
+    token = os.getenv("DISCORD_TOKEN", "")
     dev_guild = os.getenv("DEV_GUILD_ID")
 
     # DEV_GUILD_ID가 있으면 기본은 개발용(guild), 없으면 모든 서버용(global)
@@ -63,10 +63,11 @@ class Rules:
     acceptance_max_hours: float = 168
     # (남은 기간 비율 이하, 배수) — 작은 비율부터 검사
     speed_tiers: tuple[tuple[float, float], ...] = ((0.10, 2.0), (0.25, 1.5))
-    # 단계 하한 체력 (stage_of에서 사용)
+    # 단계 하한 체력. 위에서부터 나빠지는 순서이고, 이름은 core/state.py의 Stage 값과 같아야 한다
+    # (core/state.py의 STAGE_FLOORS가 이 값을 읽어서 만든다)
     stage_floors: tuple[tuple[str, int], ...] = (
-        ("정상", 84), ("부정", 67), ("분노", 50),
-        ("협상", 34), ("우울", 17), ("수용", 0),
+        ("normal", 84), ("denial", 67), ("anger", 50),
+        ("bargaining", 34), ("depression", 17), ("acceptance", 0),
     )
 
 
