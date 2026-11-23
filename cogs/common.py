@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import datetime
 
 import aiosqlite
@@ -37,6 +38,11 @@ async def settle(
         m = await repo.get_mascot(db, team.id)
         change = decay(m, team.to_core(), now)
         if change is None:
+            # 체력이 0이거나 마감이 지나서 줄어든 게 없어도, 계산한 시각은 남긴다.
+            # 안 남기면 나중에 마감을 늘리거나 부활할 때 그동안의 시간이 한꺼번에 깎인다
+            if now > m.last_decay_at:
+                m = replace(m, last_decay_at=now)
+                await repo.save_mascot(db, team.id, m)
             return m, None
         await repo.save_mascot(db, team.id, change.after)
         return change.after, change
