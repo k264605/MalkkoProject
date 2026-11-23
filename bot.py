@@ -10,6 +10,7 @@ from discord.ext import commands
 
 from config import BASE_DIR, settings
 
+from ui.images import check_assets
 from ui.translator import KoTranslator
 
 log = logging.getLogger("malkko")
@@ -27,6 +28,7 @@ class MalkkoBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True  # 잡담 분류용 (포털에서도 켜야 함)
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
+        self._guild_cleanup_done = False   # on_ready는 재연결 때마다 불리므로 한 번만 정리하려고
 
     async def setup_hook(self) -> None:
         # 1) DB 연결 (봇 전체가 연결 하나를 공유)
@@ -45,6 +47,9 @@ class MalkkoBot(commands.Bot):
         for ext in COGS:
             await self.load_extension(ext)
             log.info("loaded %s", ext)
+
+        # 캐릭터 이미지 점검 (연결된 수, 빠진 단계, 2MB 초과를 로그로 알려준다)
+        check_assets()
 
         await self.tree.set_translator(KoTranslator())  # ← 추가 (sync보다 먼저)
 
@@ -73,10 +78,17 @@ class MalkkoBot(commands.Bot):
 
     async def on_ready(self) -> None:
         log.info("logged in as %s (id=%s)", self.user, self.user.id)
-        if not settings.dev_guild_id:
-            for g in self.guilds:
+        # on_ready는 연결이 끊겼다 다시 붙을 때마다 불린다. 서버별 명령 정리는 실행당 한 번만 한다
+        # (매번 하면 서버 수만큼 동기화 요청이 반복돼 디스코드 요청 제한에 걸릴 수 있다)
+        if self._guild_cleanup_done or settings.dev_guild_id:
+            return
+        self._guild_cleanup_done = True
+        for g in self.guilds:
+            try:
                 self.tree.clear_commands(guild=g)
                 await self.tree.sync(guild=g)
+            except discord.HTTPException as e:
+                log.warning("서버 전용 명령 정리 실패: guild=%s (%s)", g.id, e)
 
     async def close(self) -> None:
         await super().close()  # cog(스케줄러) 먼저 정리
@@ -96,5 +108,7 @@ async def ping(interaction: discord.Interaction) -> None:
 
 
 if __name__ == "__main__":
+    if not settings.token:
+        raise SystemExit(".env에 DISCORD_TOKEN이 없습니다.")
     discord.utils.setup_logging(level=logging.INFO)
     bot.run(settings.token, log_handler=None)

@@ -18,14 +18,9 @@ class Stage(str, Enum):
     ACCEPTANCE = "acceptance"
 
 
-# (단계, 하한 체력): 위에서부터 검사. 순서 = 나빠지는 순서
-STAGE_FLOORS: tuple[tuple[Stage, int], ...] = (
-    (Stage.NORMAL, 84),
-    (Stage.DENIAL, 67),
-    (Stage.ANGER, 50),
-    (Stage.BARGAINING, 34),
-    (Stage.DEPRESSION, 17),
-    (Stage.ACCEPTANCE, 0),
+# (단계, 하한 체력): 위에서부터 검사. 순서 = 나빠지는 순서. 숫자는 config.py의 RULES.stage_floors 한 곳에서 정한다
+STAGE_FLOORS: tuple[tuple[Stage, int], ...] = tuple(
+    (Stage(name), floor) for name, floor in RULES.stage_floors
 )
 STAGE_RANK = {stage: i for i, (stage, _) in enumerate(STAGE_FLOORS)}  # 클수록 나쁨
 

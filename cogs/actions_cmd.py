@@ -22,6 +22,11 @@ def fmt_wait(td: timedelta) -> str:
     return f"{h}시간 {m}분" if h else f"{m}분"
 
 
+def cooldown_text(remaining: timedelta) -> str:
+    return (f"⏳ 진행 공유는 6시간에 한 번만 가능해요. "
+            f"**{fmt_wait(remaining)}** 뒤에 다시 해주세요.")
+
+
 class ActionsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -44,6 +49,17 @@ class ActionsCog(commands.Cog):
         sharers: frozenset[int] = frozenset()
         member_count = 1
         change = None
+
+        # 쿨다운이면 바로 나만 보이게 안내한다 (defer를 하고 나면 나만 보이게 보낼 수 없다)
+        last = await repo.last_action_at(db, team.id, user.id, kind)
+        remaining = cooldown_remaining(kind, last, team.now())
+        if remaining.total_seconds() > 0:
+            await interaction.response.send_message(cooldown_text(remaining), ephemeral=True)
+            return
+
+        # 디스코드는 3초 안에 첫 응답이 없으면 명령을 실패로 처리한다.
+        # 락 대기나 이미지 업로드가 길어져도 괜찮도록 먼저 "생각 중"으로 응답해 둔다
+        await interaction.response.defer()
 
         async with repo.team_lock(team.id):
             now = team.now()
@@ -74,9 +90,8 @@ class ActionsCog(commands.Cog):
             await announce(self.bot, team, decay_change, now)
 
         if remaining.total_seconds() > 0:
-            await interaction.response.send_message(
-                f"⏳ 진행 공유는 6시간에 한 번만 가능해요. **{fmt_wait(remaining)}** 뒤에 다시 해주세요.",
-                ephemeral=True)
+            # 위에서 확인한 뒤 락을 기다리는 사이에 같은 사람이 먼저 공유한 드문 경우
+            await interaction.followup.send(cooldown_text(remaining))
             return
 
         # 6) 결과 안내
@@ -104,7 +119,7 @@ class ActionsCog(commands.Cog):
             headline = thanks_line()
 
         kw = card_kwargs(team, new_m, now, revive, headline=headline)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"{text}\n> {content}",
             allowed_mentions=discord.AllowedMentions.none(),
             **kw,

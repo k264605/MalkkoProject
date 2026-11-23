@@ -2,7 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from core.state import Mascot, Stage, Team, decay, hours_to_acceptance, speed_multiplier, stage_of
+from config import RULES
+from core.state import (
+    STAGE_FLOORS, Mascot, Stage, Team, decay, hours_to_acceptance, speed_multiplier, stage_of,
+)
 
 UTC = timezone.utc
 START = datetime(2026, 11, 1, tzinfo=UTC)
@@ -77,3 +80,11 @@ def test_decay_hp_floor_is_zero():
 def test_decay_no_time_passed():
     m = Mascot(hp=100, last_decay_at=START + timedelta(hours=1))
     assert decay(m, TEAM, START + timedelta(hours=1)) is None
+
+
+def test_stage_floors_come_from_rules():
+    # 단계 기준값은 config.RULES.stage_floors 한 곳에서만 정한다
+    assert tuple((s.value, f) for s, f in STAGE_FLOORS) == RULES.stage_floors
+    assert [s for s, _ in STAGE_FLOORS] == list(Stage)       # 모든 단계가 나빠지는 순서로
+    for stage, floor in STAGE_FLOORS:
+        assert stage_of(floor) is stage
