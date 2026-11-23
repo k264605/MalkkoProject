@@ -1,0 +1,14 @@
+# 로컬 DB
+*.db
+*.db-shm
+*.db-wal
+
+# 비밀값
+.env
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
