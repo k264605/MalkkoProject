@@ -98,7 +98,7 @@ class DemoCog(commands.Cog):
             announced = True
         if not announced:
             revive = await revive_info(db, team, m)
-            await interaction.followup.send(embed=build_status_card(team, m, now, revive))
+            await interaction.followup.send(**card_kwargs(team, m, now, revive))
 
     @demo.command(name="reset", description="체력 100, 정상, 가상 시간을 처음 상태로 되돌려요")
     async def reset(self, interaction: discord.Interaction) -> None:
